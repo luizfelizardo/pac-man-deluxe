@@ -2,43 +2,6 @@
 
 Bem-vindo ao Pac-Man Deluxe! Este é um projeto de jogo desenvolvido com foco em performance e diversão. Sinta-se à vontade para explorar o código, aprender como a lógica foi construída ou contribuir com melhorias.
 
-## 🚀 Teste agora
-Você pode jogar a versão mais recente publicada diretamente no Netlify:
-https://pac-man-deluxe.netlify.app/
-
----
-
-## 🛠️ Como rodar o projeto localmente
-
-Se você deseja baixar o código para estudar, modificar ou rodar na sua máquina, siga os passos abaixo:
-
-### Pré-requisitos
-Certifique-se de ter o Git instalado no seu computador.
-
-### Passos para instalação
-1. Clone o repositório:
-   git clone https://github.com/luizfelizardo/# 🕹️ Pac-Man Deluxe
-
-Bem-vindo ao Pac-Man Deluxe! Este é um projeto de jogo desenvolvido com foco em performance e diversão. Sinta-se à vontade para explorar o código, aprender como a lógica foi construída ou contribuir com melhorias.
-
-## 🚀 Teste agora
-Você pode jogar a versão mais recente publicada diretamente no Netlify:
-https://pac-man-deluxe.netlify.app/
-
----
-
-## 🛠️ Como rodar o projeto localmente
-
-Se você deseja baixar o código para estudar, modificar ou rodar na sua máquina, siga os passos abaixo:
-
-### Pré-requisitos
-Certifique-se de ter o Git instalado no seu computador.
-
-### Passos para instalação
-1. Clone o repositório:
-   git clone https://github.com/luizfelizardo/# 🕹️ Pac-Man Deluxe
-
-Bem-vindo ao Pac-Man Deluxe! Este é um projeto de jogo desenvolvido com foco em performance e diversão. Sinta-se à vontade para explorar o código, aprender como a lógica foi construída ou contribuir com melhorias.
 
 ## 🚀 Teste agora
 Você pode jogar a versão mais recente publicada diretamente no Netlify:
