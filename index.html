@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>The Eye of Terror: Labyrinth Run </title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; touch-action:none; }
+html,body {
+    width:100%; height:100%; overflow:hidden; background:#050816;
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+body { display:flex; justify-content:center; align-items:center; }
+#gameWrap { position:relative; width:100vw; height:100vh; overflow:hidden; background: radial-gradient(circle at top,#102044,#050816 60%); }
+canvas { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+#hud {
+    position:absolute; top:12px; left:50%; transform:translateX(-50%);
+    width:min(1200px,95vw); display:flex; justify-content:space-between; padding:14px 22px;
+    background:rgba(10, 25, 47, 0.85); backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.12); border-radius:16px; color:white; font-weight:700;
+    z-index:10; font-size:clamp(14px, 2vw, 22px); box-shadow:0 8px 32px rgba(0,0,0,0.5);
+}
+#msg {
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%); padding:12px 24px;
+    background:rgba(0,0,0,.75); color:#fff; border-radius:30px; font-weight:bold;
+    letter-spacing:1px; z-index:20; box-shadow:0 4px 15px rgba(0,0,0,0.4); font-size:14px;
+}
+#startScreen,#victoryScreen,#gameOverScreen {
+    position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center;
+    align-items:center; background:rgba(10, 25, 47, 0.95); color:white; z-index:100; text-align:center; padding:20px;
+}
+.hidden { display:none!important; }
+.title { font-size:clamp(36px,6vw,80px); font-weight:900; color:#ffcc00; margin-bottom:15px; text-shadow:0 0 25px #ffcc00; }
+.sub { font-size:clamp(16px,1.8vw,24px); opacity:.9; max-width:800px; line-height:1.5; color:#94a3b8; }
+button {
+    margin-top:30px; padding:16px 38px; border:none; border-radius:14px; font-size:20px;
+    font-weight:800; cursor:pointer; background:#00d9ff; color:#000; transition:.2s; box-shadow:0 4px 15px rgba(0,217,255,0.4);
+}
+button:hover { transform:scale(1.06); background:#00b4d8; }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+<canvas id="game"></canvas>
+
+<div id="hud">
+    <div id="score">PONTOS: 0</div>
+    <div id="lives">VIDAS: 3</div>
+    <div id="level">FASE: 1</div>
+    <div id="fruits">FRUTAS: 0</div>
+</div>
+
+<div id="msg">Aperte ENTER na vitória para recomeçar o jogo!</div>
+
+<div id="startScreen">
+    <div class="title">The Eye of Terror: Labyrinth Run</div>
+    <div class="sub">
+        Mundo Expandido • Câmera Cinemática • Ciclope Animado • Partículas de Explosão • Suporte Mobile
+    </div>
+    <button onclick="startGame()">JOGAR</button>
+</div>
+
+<div id="victoryScreen" class="hidden">
+    <div class="title">VITÓRIA!</div>
+    <div class="sub" id="victoryText"></div>
+    <p style="margin-top: 20px; color: #ffd84d; font-weight: bold; font-size: 18px;">[ APERTE ENTER PARA REINICIAR O JOGO ]</p>
+    <button onclick="restartGame()">JOGAR NOVAMENTE</button>
+</div>
+
+<div id="gameOverScreen" class="hidden">
+    <div class="title" style="color:#ff4d6d">GAME OVER</div>
+    <div class="sub">O Ciclope capturou você. Tente refazer sua estratégia...</div>
+    <button onclick="restartGame()">TENTAR NOVAMENTE</button>
+</div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize',resize);
+resize();
+
+const TILE = 64;
+const MAP_W = 36;
+const MAP_H = 28;
+
+const map = [];
+
+// Gerador do Labirinto Aberto Fluido
+for(let y=0;y<MAP_H;y++){
+    const row=[];
+    for(let x=0;x<MAP_W;x++){
+        if(y===0 || x===0 || x===MAP_W-1 || y===MAP_H-1) {
+            row.push(1);
+        } 
+        else if((x%6===0 && y>2 && y<25 && y%4!==0) || (y%5===0 && x>2 && x<33 && x%4!==0)) {
+            row.push(1);
+        } 
+        else {
+            row.push(0);
+        }
+    }
+    map.push(row);
+}
+
+function clearSpawn(){
+    for(let y=1;y<5;y++){
+        for(let x=1;x<5;x++) map[y][x]=0;
+    }
+}
+clearSpawn();
+
+// Carregamento de Imagens
+const images = {
+    player: new Image(),
+    monster: new Image()
+};
+let playerImgReady = false;
+let monsterImgReady = false;
+
+images.player.src = 'jogador_sprites.png';
+images.player.onload = () => { playerImgReady = true; };
+images.player.onerror = () => {
+    images.player.src = 'jogador_sprites.png.png';
+    images.player.onload = () => { playerImgReady = true; };
+};
+
+images.monster.src = 'monstro.png';
+images.monster.onload = () => { monsterImgReady = true; };
+images.monster.onerror = () => {
+    images.monster.src = 'monstro.png.png';
+    images.monster.onload = () => { monsterImgReady = true; };
+};
+
+const player={
+    x: 80, y: 80,
+    size: 32, 
+    renderW: 76, renderH: 94, 
+    xOff: -38, yOff: -52, 
+    speed: 4.5, dir: 1, anim: 0, currentFrame: 0
+};
+
+const enemy={
+    x: (MAP_W - 2) * TILE + 8, y: (MAP_H - 2) * TILE + 8,
+    size: 44, renderW: 76, renderH: 76,
+    xOff: -38, yOff: -38, 
+    targetGridX: MAP_W - 2, targetGridY: MAP_H - 2,
+    speed: 3.0, anim: 0, currentFrame: 0, dir: 1,
+    isScared: false, scaredTimer: 0, normalSpeed: 3.0, scaredSpeed: 1.5
+};
+
+const camera={x:0,y:0};
+const keys={};
+let pellets=[];
+let fruits=[];
+const particles=[];
+
+let score=0;
+let lives=3;
+let level=1;
+let fruitCount=0;
+let gameStarted=false;
+let gameWon=false;
+
+function rand(a,b){ return Math.random()*(b-a)+a; }
+
+function initLevel(lvl) {
+    player.x = 80;
+    player.y = 80;
+    player.dir = 1;
+    
+    const startGX = MAP_W - 2;
+    const startGY = MAP_H - 2;
+    enemy.targetGridX = startGX;
+    enemy.targetGridY = startGY;
+    enemy.x = startGX * TILE + 8;
+    enemy.y = startGY * TILE + 8;
+    enemy.dir = 1;
+    enemy.isScared = false;
+    enemy.scaredTimer = 0;
+    enemy.normalSpeed = 2.4 + (lvl * 0.4);
+    enemy.speed = enemy.normalSpeed;
+
+    pellets = [];
+    for(let y=1; y<MAP_H-1; y++){
+        for(let x=1; x<MAP_W-1; x++){
+            if(map[y][x] === 0 && !(x<4 && y<4)) {
+                if(map[y-1][x]===0 || map[y+1][x]===0 || map[y][x-1]===0 || map[y][x+1]===0) {
+                    if (map[y-1][x]===1 && map[y+1][x]===1 && map[y][x-1]===1 && map[y][x+1]===1) continue;
+                    pellets.push({ x:x*TILE+TILE/2, y:y*TILE+TILE/2, active:true });
+                }
+            }
+        }
+    }
+
+    fruits = [];
+    for(let i=0;i<15;i++) spawnFruit();
+}
+
+function spawnFruit(){
+    let placed=false;
+    let attempts = 0;
+    while(!placed && attempts < 100){
+        const gx=Math.floor(rand(2,MAP_W-2));
+        const gy=Math.floor(rand(2,MAP_H-2));
+        if(map[gy] && map[gy][gx] === 0 && map[gy-1][gx]===0){
+            fruits.push({
+                x:gx*TILE+TILE/2, y:gy*TILE+TILE/2, size:18, active:true,
+                color:["#ff004d","#00ff99","#ffcc00"][Math.floor(Math.random()*3)]
+            });
+            placed=true;
+        }
+        attempts++;
+    }
+}
+
+function startGame(){
+    gameStarted=true;
+    document.getElementById('startScreen').classList.add('hidden');
+}
+
+function restartGame(){ location.reload(); }
+
+window.addEventListener('keydown',e=>{
+    const k = e.key.toLowerCase();
+    keys[k]=true;
+    
+    if(gameWon && e.key === "Enter") {
+        restartGame();
+    }
+    
+    if(["arrowup","arrowdown","arrowleft","arrowright"].includes(k)) e.preventDefault();
+});
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+canvas.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    if(!gameStarted || gameWon) return;
+    const rect = canvas.getBoundingClientRect();
+    const tx = (e.touches[0].clientX - rect.left) + camera.x;
+    const ty = (e.touches[0].clientY - rect.top) + camera.y;
+    const px = player.x + player.size/2;
+    const py = player.y + player.size/2;
+    
+    keys["arrowleft"] = keys["arrowright"] = keys["arrowup"] = keys["arrowdown"] = false;
+    keys["a"] = keys["d"] = keys["w"] = keys["s"] = false;
+
+    if (Math.abs(tx - px) > Math.abs(ty - py)) {
+        if (tx > px) keys["arrowright"] = true; else keys["arrowleft"] = true;
+    } else {
+        if (ty > py) keys["arrowdown"] = true; else keys["arrowup"] = true;
+    }
+}, { passive: false });
+
+canvas.addEventListener("touchend", () => {
+    keys["arrowleft"] = keys["arrowright"] = keys["arrowup"] = keys["arrowdown"] = false;
+    keys["a"] = keys["d"] = keys["w"] = keys["s"] = false;
+});
+
+function wallAt(x,y){
+    const gx=Math.floor(x/TILE);
+    const gy=Math.floor(y/TILE);
+    if(gx<0 || gx>=MAP_W || gy<0 || gy>=MAP_H) return true;
+    return map[gy] && map[gy][gx]===1;
+}
+
+function checkWallCollision(x, y, size) {
+    const margin = 2; 
+    const left = x + margin;
+    const right = x + size - margin;
+    const top = y + margin;
+    const bottom = y + size - margin;
+
+    return (
+        wallAt(left, top) ||
+        wallAt(right, top) ||
+        wallAt(left, bottom) ||
+        wallAt(right, bottom) ||
+        wallAt(left, y + size/2) || 
+        wallAt(right, y + size/2) || 
+        wallAt(x + size/2, top) ||   
+        wallAt(x + size/2, bottom)   
+    );
+}
+
+function movePlayer(){
+    let dx=0; let dy=0;
+    if(keys['arrowleft']||keys['a']){dx=-player.speed;player.dir=-1}
+    if(keys['arrowright']||keys['d']){dx=player.speed;player.dir=1}
+    if(keys['arrowup']||keys['w'])dy=-player.speed;
+    if(keys['arrowdown']||keys['s'])dy=player.speed;
+
+    const nextX = player.x + dx;
+    const nextY = player.y + dy;
+
+    if(!checkWallCollision(nextX, player.y, player.size)) {
+        player.x = nextX;
+    }
+    if(!checkWallCollision(player.x, nextY, player.size)) {
+        player.y = nextY;
+    }
+
+    if(dx||dy) {
+        player.anim+=0.15;
+        player.currentFrame = Math.floor(player.anim) % 4;
+    } else {
+        player.currentFrame = 0;
+    }
+}
+
+function moveEnemy(){
+    const targetX = enemy.targetGridX * TILE + 8;
+    const targetY = enemy.targetGridY * TILE + 8;
+
+    if (Math.abs(enemy.x - targetX) < enemy.speed && Math.abs(enemy.y - targetY) < enemy.speed) {
+        enemy.x = targetX;
+        enemy.y = targetY;
+
+        const currentGX = enemy.targetGridX;
+        const currentGY = enemy.targetGridY;
+        
+        const playerGX = Math.floor((player.x + player.size/2) / TILE);
+        const playerGY = Math.floor((player.y + player.size/2) / TILE);
+
+        let options = [];
+        const directions = [
+            {col: currentGX, row: currentGY - 1}, 
+            {col: currentGX, row: currentGY + 1}, 
+            {col: currentGX - 1, row: currentGY}, 
+            {col: currentGX + 1, row: currentGY}  
+        ];
+
+        directions.forEach(dir => {
+            if (map[dir.row] && map[dir.row][dir.col] === 0) {
+                const distance = Math.abs(dir.col - playerGX) + Math.abs(dir.row - playerGY);
+                options.push({col: dir.col, row: dir.row, dist: distance});
+            }
+        });
+
+        if (options.length > 0) {
+            if (enemy.isScared) {
+                options.sort((a, b) => b.dist - a.dist);
+            } else {
+                options.sort((a, b) => a.dist - b.dist);
+            }
+            
+            enemy.targetGridX = options[0].col;
+            enemy.targetGridY = options[0].row;
+        }
+    }
+
+    const nextTargetX = enemy.targetGridX * TILE + 8;
+    const nextTargetY = enemy.targetGridY * TILE + 8;
+
+    if (enemy.x < nextTargetX) { enemy.x = Math.min(enemy.x + enemy.speed, nextTargetX); enemy.dir = 1; }
+    if (enemy.x > nextTargetX) { enemy.x = Math.max(enemy.x - enemy.speed, nextTargetX); enemy.dir = -1; }
+    if (enemy.y < nextTargetY) enemy.y = Math.min(enemy.y + enemy.speed, nextTargetY);
+    if (enemy.y > nextTargetY) enemy.y = Math.max(enemy.y - enemy.speed, nextTargetY);
+
+    enemy.anim += 0.12;
+    enemy.currentFrame = Math.floor(enemy.anim) % 4;
+}
+
+function collide(a,b,dist){
+    return Math.hypot((a.x+a.size/2)-b.x,(a.y+a.size/2)-b.y)<dist;
+}
+
+function makeParticles(x,y,color,count=12){
+    for(let i=0;i<count;i++){
+        particles.push({
+            x,y,
+            vx:rand(-5,5),
+            vy:rand(-5,5),
+            life:rand(20,50),
+            maxLife: 50,
+            color
+        });
+    }
+}
+
+function update(){
+    particles.forEach(p=>{
+        p.x+=p.vx; p.y+=p.vy; p.life--;
+    });
+    for(let i=particles.length-1;i>=0;i--){
+        if(particles[i].life<=0) particles.splice(i,1);
+    }
+
+    if(!gameStarted||gameWon||lives<=0) return;
+
+    movePlayer();
+    moveEnemy();
+
+    camera.x += (((player.x + player.size/2) - canvas.width/2) - camera.x)*0.08;
+    camera.y += (((player.y + player.size/2) - canvas.height/2) - camera.y)*0.08;
+
+    // --- CORREÇÃO APLICADA: Reduzido o limite superior do teto para criar um Padding invisível seguro de 16px ---
+    camera.x = Math.max(0, Math.min(camera.x, MAP_W*TILE - canvas.width));
+    camera.y = Math.max(-16, Math.min(camera.y, MAP_H*TILE - canvas.height));
+
+    pellets.forEach(p=>{
+        if(!p.active) return;
+        if(collide(player,p,34)){
+            p.active=false;
+            score+=10;
+            makeParticles(p.x,p.y,'#ffd84d',6);
+        }
+    });
+
+    fruits.forEach(f=>{
+        if(!f.active) return;
+        if(collide(player,f,38)){
+            f.active=false;
+            fruitCount++;
+            score+=100;
+            enemy.isScared = true;
+            enemy.scaredTimer = 360;
+            enemy.speed = enemy.scaredSpeed;
+            makeParticles(f.x,f.y,f.color,20);
+        }
+    });
+
+    if(enemy.isScared) {
+        enemy.scaredTimer--;
+        if(enemy.scaredTimer <= 0) {
+            enemy.isScared = false;
+            enemy.speed = enemy.normalSpeed;
+        }
+    }
+
+    if(Math.hypot((player.x+player.size/2)-(enemy.x+enemy.size/2), (player.y+player.size/2)-(enemy.y+enemy.size/2)) < 42){
+        if(enemy.isScared) {
+            score += 200;
+            enemy.targetGridX = MAP_W - 2;
+            enemy.targetGridY = MAP_H - 2;
+            enemy.x = (MAP_W - 2) * TILE + 8; 
+            enemy.y = (MAP_H - 2) * TILE + 8;
+            enemy.isScared = false; 
+            enemy.speed = enemy.normalSpeed;
+            makeParticles(enemy.x+27, enemy.y+27, '#00ffff', 30);
+        } else {
+            lives--;
+            makeParticles(player.x+player.size/2,player.y+player.size/2,'#ff004d',45);
+            player.x=80; player.y=80;
+            if(lives<=0){
+                document.getElementById('gameOverScreen').classList.remove('hidden');
+                return;
+            }
+        }
+    }
+
+    if(pellets.filter(p=>p.active).length===0){
+        gameWon=true; 
+        celebrate();
+        return;
+    }
+
+    enemy.speed = enemy.isScared ? enemy.scaredSpeed : enemy.normalSpeed;
+
+    hud();
+}
+
+function hud(){
+    document.getElementById('score').textContent='PONTOS: '+score;
+    document.getElementById('lives').textContent='VIDAS: '+lives;
+    document.getElementById('level').textContent='FASE: '+level;
+    document.getElementById('fruits').textContent='FRUTAS: '+fruitCount;
+}
+
+function celebrate(){
+    for(let i=0;i<300;i++){
+        makeParticles(rand(0,MAP_W*TILE),rand(0,MAP_H*TILE),`hsl(${Math.random()*360}, 100%, 65%)`,1);
+    }
+    
+    setTimeout(()=>{
+        document.getElementById('victoryScreen').classList.remove('hidden');
+        document.getElementById('victoryText').innerHTML=
+        `Score Final Obtido: <b>${score}</b><br>Frutas Coletadas no Percurso: <b>${fruitCount}</b>`;
+    },1000);
+}
+
+function drawGrid(){
+    for(let y=0;y<MAP_H;y++){
+        for(let x=0;x<MAP_W;x++){
+            if(map[y][x]===1){
+                ctx.fillStyle='#12396f';
+                ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+                ctx.strokeStyle='#00d9ff';
+                ctx.lineWidth=3;
+                ctx.strokeRect(x*TILE+2,y*TILE+2,TILE-4,TILE-4);
+            }
+        }
+    }
+}
+
+function drawPellets(){
+    pellets.forEach(p=>{
+        if(!p.active) return;
+        ctx.beginPath();
+        ctx.fillStyle='#ffd84d';
+        ctx.arc(p.x,p.y,5+Math.sin(performance.now()*0.008)*1.2,0,Math.PI*2);
+        ctx.fill();
+    });
+}
+
+function drawFruits(){
+    fruits.forEach(f=>{
+        if(!f.active) return;
+        ctx.beginPath();
+        ctx.fillStyle=f.color;
+        ctx.arc(f.x,f.y,f.size,0,Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.fillRect(f.x-2,f.y-24,4,10);
+    });
+}
+
+function drawPlayer(){
+    if (playerImgReady) {
+        ctx.save();
+        ctx.translate(player.x + player.size / 2, player.y + player.size / 2);
+        if (player.dir === -1) ctx.scale(-1, 1);
+        ctx.drawImage(
+            images.player,
+            player.currentFrame * (images.player.width / 4), 0, 
+            images.player.width / 4, images.player.height,
+            player.xOff, player.yOff, 
+            player.renderW, player.renderH
+        );
+        ctx.restore();
+    } else {
+        ctx.fillStyle = '#00d9ff';
+        ctx.beginPath();
+        ctx.arc(player.x+player.size/2, player.y+player.size/2, player.size/2, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+function drawEnemy(){
+    if (monsterImgReady) {
+        const frameW = images.monster.width / 2;
+        const frameH = images.monster.height / 2;
+        const srcX = (enemy.currentFrame % 2) * frameW;
+        const srcY = Math.floor(enemy.currentFrame / 2) * frameH;
+
+        ctx.save();
+        ctx.translate(enemy.x + enemy.size / 2, enemy.y + enemy.size / 2);
+        if (enemy.dir === -1) ctx.scale(-1, 1);
+
+        if (enemy.isScared) {
+            ctx.globalAlpha = 0.5;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#00ffff";
+        }
+        ctx.drawImage(
+            images.monster,
+            srcX, srcY, frameW, frameH,
+            enemy.xOff, enemy.yOff, enemy.renderW, enemy.renderH
+        );
+        ctx.restore();
+    } else {
+        ctx.fillStyle = enemy.isScared ? '#191970' : '#ff3b5c';
+        ctx.fillRect(enemy.x, enemy.y, enemy.size, enemy.size);
+    }
+}
+
+function drawParticles(){
+    particles.forEach(p=>{
+        ctx.globalAlpha=p.life/p.maxLife;
+        ctx.fillStyle=p.color;
+        ctx.fillRect(p.x,p.y,5,5);
+    });
+    ctx.globalAlpha=1.0;
+}
+
+function drawMinimap(){
+    const mw=200; const mh=150;
+    const scaleX=mw/(MAP_W*TILE); const scaleY=mh/(MAP_H*TILE);
+    const x=canvas.width-mw-20; const y=canvas.height-mh-20;
+
+    ctx.fillStyle='rgba(10,25,47,0.75)';
+    ctx.roundRect(x,y,mw,mh,12); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.1)';
+    ctx.stroke();
+
+    for(let yy=0;yy<MAP_H;yy++){
+        for(let xx=0;xx<MAP_W;xx++){
+            if(map[yy][xx]===1){
+                ctx.fillStyle='rgba(0,217,255,0.4)';
+                ctx.fillRect(x+xx*TILE*scaleX,y+yy*TILE*scaleY,TILE*scaleX,TILE*scaleY);
+            }
+        }
+    }
+
+    ctx.fillStyle='#00ff99';
+    ctx.fillRect(x+(player.x+player.size/2)*scaleX - 3, y+(player.y+player.size/2)*scaleY - 3,6,6);
+
+    ctx.fillStyle='#ff004d';
+    ctx.fillRect(x+(enemy.x+enemy.size/2)*scaleX - 3, y+(enemy.y+enemy.size/2)*scaleY - 3,6,6);
+}
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2; if (h < 2 * r) r = h / 2;
+        this.beginPath(); this.moveTo(x + r, y); this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r); this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y, x + w, y, r); this.closePath(); return this;
+    };
+}
+
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.save();
+    ctx.translate(-Math.floor(camera.x), -Math.floor(camera.y));
+
+    drawGrid();
+    drawPellets();
+    drawFruits();
+    drawParticles();
+    drawPlayer();
+    drawEnemy();
+
+    ctx.restore();
+
+    if(gameStarted && !gameWon && lives>0) {
+        drawMinimap();
+    }
+}
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+initLevel(1);
+loop();
+</script>
+</body>
+</html>
